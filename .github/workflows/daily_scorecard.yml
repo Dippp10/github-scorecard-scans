@@ -1,7 +1,7 @@
-name: Scan all repos with Scorecard
+name: Scan all repos with Scorecard & Markdown Report
 
 on:
-  workflow_dispatch: # manual trigger
+  workflow_dispatch:
   schedule:
     - cron: '0 3 * * 4' # weekly
 
@@ -9,18 +9,17 @@ jobs:
   scan_all_repos:
     runs-on: ubuntu-latest
     steps:
-      - name: Install Scorecard CLI
+      - name: Install dependencies
         run: |
+          sudo apt update && sudo apt install -y jq curl bc
           curl -sSL https://github.com/ossf/scorecard/releases/latest/download/scorecard-checks_linux_x86_64.tar.gz | tar -xz
           sudo mv scorecard /usr/local/bin/
 
-      - name: Checkout (optional)
-        uses: actions/checkout@v3
-
-      - name: List all repos
+      - name: List all repositories
         id: list_repos
         run: |
-          echo "REPOS=$(curl -H \"Authorization: token ${{ secrets.ALL_REPOS_TOKEN }}\" https://api.github.com/user/repos?per_page=100 | jq -r '.[].full_name' | tr '\n' ' ')" >> $GITHUB_ENV
+          echo "REPOS=$(curl -H \"Authorization: token ${{ secrets.ALL_REPOS_TOKEN }}\" \
+            https://api.github.com/user/repos?per_page=100 | jq -r '.[].full_name' | tr '\n' ' ')" >> $GITHUB_ENV
 
       - name: Run Scorecard on all repos
         run: |
@@ -30,7 +29,28 @@ jobs:
             scorecard --repo="https://github.com/$repo" --format=json > "results/${repo//\//_}.json"
           done
 
-      - name: Upload results
+      - name: Generate Markdown Report
+        run: |
+          echo "# GitHub Scorecard Report" > results/scorecard_report.md
+          echo "| Repository | Score | Link |" >> results/scorecard_report.md
+          echo "|------------|-------|------|" >> results/scorecard_report.md
+
+          total_score=0
+          count=0
+
+          for file in results/*.json; do
+            repo_name=$(basename "$file" .json | tr '_' '/')
+            score=$(jq '.Score' "$file")
+            total_score=$(echo "$total_score + $score" | bc)
+            count=$((count + 1))
+            echo "| $repo_name | $score | [Link](https://github.com/$repo_name) |" >> results/scorecard_report.md
+          done
+
+          avg=$(echo "scale=2; $total_score / $count" | bc)
+          echo "" >> results/scorecard_report.md
+          echo "**Average Score across $count repositories: $avg**" >> results/scorecard_report.md
+
+      - name: Upload All Results
         uses: actions/upload-artifact@v3
         with:
           name: all-repos-scorecard
