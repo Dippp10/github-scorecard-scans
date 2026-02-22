@@ -1,0 +1,50 @@
+name: OpenSSF Scorecard Full
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 0 * * 0"  # weekly scan
+
+permissions:
+  contents: write
+  security-events: write
+  id-token: write
+  issues: read
+  pull-requests: read
+  checks: read
+
+jobs:
+  run-scorecard:
+    runs-on: ubuntu-latest
+    steps:
+      # Checkout code
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # Run Scorecard
+      - name: Run OpenSSF Scorecard
+        uses: ossf/scorecard-action@v2.4.3
+        with:
+          results_file: scorecard-results.json
+          publish_results: true
+          results_format: sarif
+
+      # Upload SARIF results to GitHub Security
+      - name: Upload SARIF results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: scorecard-results.sarif
+
+      # Save historical results
+      - name: Save historical results
+        run: |
+          TIMESTAMP=$(date +'%Y%m%d-%H%M%S')
+          mkdir -p scorecard-history
+          cp scorecard-results.json scorecard-history/scorecard-$TIMESTAMP.json
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add scorecard-history/scorecard-$TIMESTAMP.json
+          git commit -m "Add Scorecard results $TIMESTAMP" || echo "No changes to commit"
+          git push
