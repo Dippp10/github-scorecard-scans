@@ -4,3 +4,5 @@
 https://api.securityscorecards.dev/projects/github.com/Dippp10/github-scorecard-scans/badge
 
 ![Scorecard](https://api.securityscorecards.dev/projects/github.com/Dippp10/github-scorecard-scans/badge)
+
+![Scorecard](https://api.securityscorecards.dev/projects/github.com/Dippp10/github-scorecard-scans/badge)
