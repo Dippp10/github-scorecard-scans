@@ -1,25 +1,26 @@
-name: Scan all repos with Scorecard & Aggregate
+name: Scan all repos with Scorecard
 
 on:
-  workflow_dispatch: # Manual trigger
+  workflow_dispatch: # manual trigger
   schedule:
-    - cron: '0 3 * * 4' # Weekly, adjust UTC as needed
+    - cron: '0 3 * * 4' # weekly
 
 jobs:
   scan_all_repos:
     runs-on: ubuntu-latest
     steps:
-      - name: Install dependencies
+      - name: Install Scorecard CLI
         run: |
-          sudo apt update && sudo apt install -y jq curl
           curl -sSL https://github.com/ossf/scorecard/releases/latest/download/scorecard-checks_linux_x86_64.tar.gz | tar -xz
           sudo mv scorecard /usr/local/bin/
 
-      - name: List all repositories
+      - name: Checkout (optional)
+        uses: actions/checkout@v3
+
+      - name: List all repos
         id: list_repos
         run: |
-          echo "REPOS=$(curl -H \"Authorization: token ${{ secrets.ALL_REPOS_TOKEN }}\" \
-            https://api.github.com/user/repos?per_page=100 | jq -r '.[].full_name' | tr '\n' ' ')" >> $GITHUB_ENV
+          echo "REPOS=$(curl -H \"Authorization: token ${{ secrets.ALL_REPOS_TOKEN }}\" https://api.github.com/user/repos?per_page=100 | jq -r '.[].full_name' | tr '\n' ' ')" >> $GITHUB_ENV
 
       - name: Run Scorecard on all repos
         run: |
@@ -29,20 +30,7 @@ jobs:
             scorecard --repo="https://github.com/$repo" --format=json > "results/${repo//\//_}.json"
           done
 
-      - name: Aggregate Scores
-        run: |
-          total_score=0
-          count=0
-          for file in results/*.json; do
-            score=$(jq '.Score' "$file")
-            total_score=$(echo "$total_score + $score" | bc)
-            count=$((count + 1))
-          done
-          avg=$(echo "scale=2; $total_score / $count" | bc)
-          echo "Average Scorecard score across $count repos: $avg"
-          echo "{\"average_score\": $avg, \"repo_count\": $count}" > results/aggregate.json
-
-      - name: Upload All Results
+      - name: Upload results
         uses: actions/upload-artifact@v3
         with:
           name: all-repos-scorecard
