@@ -1,14 +1,19 @@
-name: Scan all repos with Scorecard & Markdown Report
+name: Scan all repos & update README
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 3 * * 4' # weekly
+    - cron: '0 3 * * 4' # Weekly at 3:00 UTC
 
 jobs:
-  scan_all_repos:
+  scan_and_update_readme:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          persist-credentials: false
+
       - name: Install dependencies
         run: |
           sudo apt update && sudo apt install -y jq curl bc
@@ -16,7 +21,6 @@ jobs:
           sudo mv scorecard /usr/local/bin/
 
       - name: List all repositories
-        id: list_repos
         run: |
           echo "REPOS=$(curl -H \"Authorization: token ${{ secrets.ALL_REPOS_TOKEN }}\" \
             https://api.github.com/user/repos?per_page=100 | jq -r '.[].full_name' | tr '\n' ' ')" >> $GITHUB_ENV
@@ -29,29 +33,32 @@ jobs:
             scorecard --repo="https://github.com/$repo" --format=json > "results/${repo//\//_}.json"
           done
 
-      - name: Generate Markdown Report
+      - name: Generate Markdown Table
+        id: gen_table
         run: |
-          echo "# GitHub Scorecard Report" > results/scorecard_report.md
-          echo "| Repository | Score | Link |" >> results/scorecard_report.md
-          echo "|------------|-------|------|" >> results/scorecard_report.md
-
+          echo "| Repository | Score | Link |" > table.md
+          echo "|------------|-------|------|" >> table.md
           total_score=0
           count=0
-
           for file in results/*.json; do
             repo_name=$(basename "$file" .json | tr '_' '/')
             score=$(jq '.Score' "$file")
             total_score=$(echo "$total_score + $score" | bc)
             count=$((count + 1))
-            echo "| $repo_name | $score | [Link](https://github.com/$repo_name) |" >> results/scorecard_report.md
+            echo "| $repo_name | $score | [Link](https://github.com/$repo_name) |" >> table.md
           done
-
           avg=$(echo "scale=2; $total_score / $count" | bc)
-          echo "" >> results/scorecard_report.md
-          echo "**Average Score across $count repositories: $avg**" >> results/scorecard_report.md
+          echo "" >> table.md
+          echo "**Average Score across $count repositories: $avg**" >> table.md
 
-      - name: Upload All Results
-        uses: actions/upload-artifact@v3
-        with:
-          name: all-repos-scorecard
-          path: results/
+      - name: Update README
+        run: |
+          # Remove old Scorecard section
+          sed -i '/<!-- SCORECARD_START -->/,/<!-- SCORECARD_END -->/d' README.md
+          # Add new table
+          echo -e "\n<!-- SCORECARD_START -->\n$(cat table.md)\n<!-- SCORECARD_END -->" >> README.md
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add README.md
+          git commit -m "Update Scorecard report [skip ci]" || echo "No changes to commit"
+          git push
