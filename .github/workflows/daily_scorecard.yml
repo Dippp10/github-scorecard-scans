@@ -1,4 +1,12 @@
-name: OpenSSF Scorecard
+permissions:
+  security-events: write
+  id-token: write
+  contents: read
+  issues: read
+  pull-requests: read
+  checks: read
+  
+  name: OpenSSF Scorecard
 
 on:
   push:
@@ -15,3 +23,6 @@ jobs:
         uses: ossf/scorecard-action@v2.4.3
         with:
           results_file: scorecard-results.json
+
+publish_results: true
+results_format: sarif
