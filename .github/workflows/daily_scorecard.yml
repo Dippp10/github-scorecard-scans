@@ -2,10 +2,10 @@ name: OpenSSF Scorecard
 
 on:
   push:
-    branches: [main]   # run on pushes to main
-  pull_request:        # run on PRs
-  schedule:            # optional: weekly scan
-    - cron: "0 0 * * 0"   # every Sunday at 00:00 UTC
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 0 * * 0"  # Weekly on Sunday at midnight UTC
 
 permissions:
   security-events: write
@@ -16,24 +16,21 @@ permissions:
   checks: read
 
 jobs:
-  scorecard:
+  run-scorecard:
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout code
-      - name: Checkout repo
+      - name: Checkout code
         uses: actions/checkout@v3
 
-      # Run OpenSSF Scorecard
-      - name: Run Scorecard
-        uses: ossf/scorecard-action@v2
+      - name: Run OpenSSF Scorecard
+        uses: ossf/scorecard-action@v2.4.3
         with:
-          results_file: scorecard-results.json   # save JSON results
-          publish_results: true                   # publish to OpenSSF Scorecard API
-          results_format: sarif                   # optional: for GitHub security scanning
+          results_file: scorecard-results.json
+          results_format: sarif
+          publish_results: true
 
-      # Upload SARIF results to GitHub Security (optional)
-      - name: Upload SARIF results
+      - name: Upload Scorecard SARIF to GitHub
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: scorecard-results.sarif
