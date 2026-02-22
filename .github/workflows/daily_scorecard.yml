@@ -1,3 +1,17 @@
-uses: ossf/scorecard-action@v2.4.3
-with:
-  results_file: scorecard-results.json
+name: OpenSSF Scorecard
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  run-scorecard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Run OpenSSF Scorecard
+        uses: ossf/scorecard-action@v2.4.3
+        with:
+          results_file: scorecard-results.json
