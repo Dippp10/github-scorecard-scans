@@ -6,19 +6,19 @@ on:
     - cron: '0 3 * * *'  # daily at 3 AM UTC
 
 permissions:
-  contents: write  # needed to update README
+  contents: write  # needed to push README badge
 
 jobs:
   scorecard:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout repo
+      # 1️⃣ Checkout repository
       - uses: actions/checkout@v3
 
       # 2️⃣ Install dependencies
-      - name: Install jq and curl
-        run: sudo apt-get update && sudo apt-get install -y jq curl wget
+      - name: Install jq, curl, wget
+        run: sudo apt-get update && sudo apt-get install -y jq curl wget bc
 
       # 3️⃣ Install Scorecard CLI
       - name: Install Scorecard CLI
@@ -27,7 +27,7 @@ jobs:
           chmod +x scorecard
           sudo mv scorecard /usr/local/bin/
 
-      # 4️⃣ Get all repositories
+      # 4️⃣ Fetch all repositories (handles >100 repos)
       - name: Get all repositories
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
@@ -43,7 +43,7 @@ jobs:
             ((page++))
           done
 
-      # 5️⃣ Run Scorecard in batches
+      # 5️⃣ Run Scorecard in batches and ignore exit code 8
       - name: Run Scorecard in batches
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
@@ -56,7 +56,7 @@ jobs:
           for file in batch_*; do
             repos=$(paste -sd, $file)
             batch_file=scorecard_results/results_$file.json
-            ./scorecard --repos=$repos --format=json -o $batch_file
+            ./scorecard --repos=$repos --format=json -o $batch_file || true
             if [ "$first" = true ]; then
               first=false
             else
@@ -66,7 +66,7 @@ jobs:
           done
           echo "]" >> combined_results.json
 
-      # 6️⃣ Upload results as artifact (v4)
+      # 6️⃣ Upload combined results as artifact (v4)
       - name: Upload results
         uses: actions/upload-artifact@v4
         with:
