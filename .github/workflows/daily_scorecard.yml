@@ -1,84 +1,44 @@
-name: Daily Scorecard Scan
+name: Scorecard Analysis
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - "main"
+      - "master"
   schedule:
-    - cron: '0 3 * * *'  # every day at 3 AM UTC
+    # Optional: weekly scan, e.g., Sunday at midnight UTC
+    - cron: "0 0 * * 0"
 
 permissions:
-  contents: write  # needed to push README badge
+  # Required for publishing results & pushing badges
+  security-events: write
+  id-token: write
+  # Recommended for GitHub API read actions
+  contents: read
+  issues: read
+  pull-requests: read
+  checks: read
 
 jobs:
   scorecard:
+    name: Run OpenSSF Scorecard
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout repo
-      - uses: actions/checkout@v3
+      # Step 1: Checkout code
+      - name: Checkout repo
+        uses: actions/checkout@v3
 
-      # 2️⃣ Install jq (for JSON processing)
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq bc
-
-      # 3️⃣ Fetch all repositories
-      - name: Get all repositories
-        env:
-          GH_PAT: ${{ secrets.GH_PAT }}
-        run: |
-          page=1
-          > all_repos.txt
-          while true; do
-            repos=$(curl -s -H "Authorization: token $GH_PAT" \
-              "https://api.github.com/users/Dippp10/repos?per_page=100&page=$page" \
-              | jq -r '.[].full_name')
-            if [ -z "$repos" ]; then break; fi
-            echo "$repos" >> all_repos.txt
-            ((page++))
-          done
-
-      # 4️⃣ Run Scorecard for each batch using the Action
-      - name: Run Scorecard in batches
-        env:
-          GH_PAT: ${{ secrets.GH_PAT }}
-        run: |
-          mkdir -p scorecard_results
-          split -l 20 all_repos.txt batch_
-          > combined_results.json
-          echo "[" >> combined_results.json
-          first=true
-          for file in batch_*; do
-            for repo in $(cat $file); do
-              echo "Scanning $repo..."
-              result=$(gh api -H "Authorization: token $GH_PAT" /repos/$repo) || true
-              scorefile=scorecard_results/$repo.json
-              # Run Scorecard Action for this repo
-              # Using OSSF Action via CLI syntax
-              gh workflow run ossf/scorecard-action@v5 --repo $repo --json -o $scorefile || true
-              if [ "$first" = true ]; then first=false; else echo "," >> combined_results.json; fi
-              cat $scorefile >> combined_results.json
-            done
-          done
-          echo "]" >> combined_results.json
-
-      # 5️⃣ Upload combined results as artifact
-      - name: Upload results
-        uses: actions/upload-artifact@v4
+      # Step 2: Run the Scorecard Action
+      - name: Run OpenSSF Scorecard
+        uses: ossf/scorecard-action@v2
         with:
-          name: scorecard-results
-          path: combined_results.json
+          results_file: scorecard-results.json   # Save full results
+          results_format: sarif                   # Format for GitHub Security scanning
+          publish_results: true                   # Optional: publish to OpenSSF API + badge
 
-      # 6️⃣ Update badge in README
-      - name: Update Scorecard badge
-        run: |
-          score=$(jq '[.[].Score]' combined_results.json | add / length | awk '{printf "%.1f", $1}')
-          if (( $(echo "$score >= 8" | bc -l) )); then color="brightgreen"
-          elif (( $(echo "$score >= 5" | bc -l) )); then color="yellow"
-          else color="red"; fi
-          badge="https://img.shields.io/badge/Scorecard-${score}-${color}"
-          sed -i "s|!\[Scorecard\](.*)|![Scorecard](${badge})|" README.md
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-          git diff --exit-code || git commit -am "Update Scorecard badge"
-          git push
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Step 3: Upload SARIF results to GitHub Code Scanning
+      - name: Upload Scorecard SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: scorecard-results.sarif
