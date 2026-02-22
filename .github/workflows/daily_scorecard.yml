@@ -1,14 +1,12 @@
-name: Daily Scorecard Scan
+name: Daily Scorecard Scan CLI
 
-# Trigger: manual or daily at 3 AM UTC
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 3 * * *'
+    - cron: '0 3 * * *'  # daily at 3 AM UTC
 
-# Give permission to push README updates
 permissions:
-  contents: write
+  contents: write  # needed to update README
 
 jobs:
   scorecard:
@@ -20,9 +18,16 @@ jobs:
 
       # 2️⃣ Install dependencies
       - name: Install jq and curl
-        run: sudo apt-get update && sudo apt-get install -y jq curl
+        run: sudo apt-get update && sudo apt-get install -y jq curl wget
 
-      # 3️⃣ Get all repositories using GH_PAT
+      # 3️⃣ Install Scorecard CLI
+      - name: Install Scorecard CLI
+        run: |
+          wget https://github.com/ossf/scorecard/releases/latest/download/scorecard-linux-amd64 -O scorecard
+          chmod +x scorecard
+          sudo mv scorecard /usr/local/bin/
+
+      # 4️⃣ Get all repositories
       - name: Get all repositories
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
@@ -38,7 +43,7 @@ jobs:
             ((page++))
           done
 
-      # 4️⃣ Run Scorecard in batches of 20 and combine results
+      # 5️⃣ Run Scorecard in batches
       - name: Run Scorecard in batches
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
@@ -51,7 +56,7 @@ jobs:
           for file in batch_*; do
             repos=$(paste -sd, $file)
             batch_file=scorecard_results/results_$file.json
-            scorecard --repos=$repos --format=json -o $batch_file
+            ./scorecard --repos=$repos --format=json -o $batch_file
             if [ "$first" = true ]; then
               first=false
             else
@@ -61,23 +66,21 @@ jobs:
           done
           echo "]" >> combined_results.json
 
-      # 5️⃣ Upload combined results as artifact (v4)
+      # 6️⃣ Upload results as artifact (v4)
       - name: Upload results
         uses: actions/upload-artifact@v4
         with:
           name: scorecard-results
           path: combined_results.json
 
-      # 6️⃣ Update badge in README
+      # 7️⃣ Update badge in README
       - name: Update Scorecard badge
         run: |
           score=$(jq '[.[].Score]' combined_results.json | add / length | awk '{printf "%.1f", $1}')
-          # Change color based on score
           if (( $(echo "$score >= 8" | bc -l) )); then color="brightgreen"
           elif (( $(echo "$score >= 5" | bc -l) )); then color="yellow"
           else color="red"; fi
           badge="https://img.shields.io/badge/Scorecard-${score}-${color}"
-          # Replace placeholder badge in README
           sed -i "s|!\[Scorecard\](.*)|![Scorecard](${badge})|" README.md
           git config user.name "github-actions"
           git config user.email "actions@github.com"
