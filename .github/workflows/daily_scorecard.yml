@@ -1,0 +1,78 @@
+name: Daily Scorecard Scan
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 3 * * *'  # every day at 3 AM UTC
+
+jobs:
+  scorecard:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1️⃣ Checkout repo
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      # 2️⃣ Install jq
+      - name: Install jq
+        run: sudo apt-get install -y jq
+
+      # 3️⃣ Fetch all repositories
+      - name: Get all repositories
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          page=1
+          > all_repos.txt
+          while true; do
+            repos=$(curl -s -H "Authorization: token $GH_PAT" \
+              "https://api.github.com/users/Dippp10/repos?per_page=100&page=$page" \
+              | jq -r '.[].full_name')
+            if [ -z "$repos" ]; then break; fi
+            echo "$repos" >> all_repos.txt
+            ((page++))
+          done
+
+      # 4️⃣ Run Scorecard in batches and combine results
+      - name: Run Scorecard in batches
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          split -l 20 all_repos.txt batch_
+          mkdir -p scorecard_results
+          > combined_results.json
+          echo "[" >> combined_results.json
+          first=true
+          for file in batch_*; do
+            repos=$(paste -sd, $file)
+            batch_file=scorecard_results/results_$file.json
+            scorecard --repos=$repos --format=json -o $batch_file
+            if [ "$first" = true ]; then
+              first=false
+            else
+              echo "," >> combined_results.json
+            fi
+            cat $batch_file >> combined_results.json
+          done
+          echo "]" >> combined_results.json
+
+      # 5️⃣ Upload combined results
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        with:
+          name: scorecard-results
+          path: combined_results.json
+
+      # 6️⃣ Update badge in README
+      - name: Update badge
+        run: |
+          score=$(jq '[.[].Score]' combined_results.json | add / length | awk '{printf "%.1f", $1}')
+          badge="https://img.shields.io/badge/Scorecard-${score}-brightgreen"
+          # Replace placeholder in README
+          sed -i "s|!\[Scorecard\](.*)|![Scorecard](${badge})|" README.md
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add README.md
+          git commit -m "Update Scorecard badge"
+          git push
