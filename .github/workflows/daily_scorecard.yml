@@ -1,30 +1,49 @@
-name: OpenSSF Scorecard Publish
+name: Scan all repos with Scorecard & Aggregate
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-
-permissions:
-  security-events: write
-  id-token: write
-  contents: read
-  issues: read
-  pull-requests: read
-  checks: read
+  workflow_dispatch: # Manual trigger
+  schedule:
+    - cron: '0 3 * * 4' # Weekly, adjust UTC as needed
 
 jobs:
-  run-scorecard:
+  scan_all_repos:
     runs-on: ubuntu-latest
     steps:
-      # Checkout your repo
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - name: Install dependencies
+        run: |
+          sudo apt update && sudo apt install -y jq curl
+          curl -sSL https://github.com/ossf/scorecard/releases/latest/download/scorecard-checks_linux_x86_64.tar.gz | tar -xz
+          sudo mv scorecard /usr/local/bin/
 
-      # Run Scorecard and publish results
-      - name: Run Scorecard
-        uses: ossf/scorecard-action@v2.4.3
+      - name: List all repositories
+        id: list_repos
+        run: |
+          echo "REPOS=$(curl -H \"Authorization: token ${{ secrets.ALL_REPOS_TOKEN }}\" \
+            https://api.github.com/user/repos?per_page=100 | jq -r '.[].full_name' | tr '\n' ' ')" >> $GITHUB_ENV
+
+      - name: Run Scorecard on all repos
+        run: |
+          mkdir -p results
+          for repo in $REPOS; do
+            echo "Scanning $repo..."
+            scorecard --repo="https://github.com/$repo" --format=json > "results/${repo//\//_}.json"
+          done
+
+      - name: Aggregate Scores
+        run: |
+          total_score=0
+          count=0
+          for file in results/*.json; do
+            score=$(jq '.Score' "$file")
+            total_score=$(echo "$total_score + $score" | bc)
+            count=$((count + 1))
+          done
+          avg=$(echo "scale=2; $total_score / $count" | bc)
+          echo "Average Scorecard score across $count repos: $avg"
+          echo "{\"average_score\": $avg, \"repo_count\": $count}" > results/aggregate.json
+
+      - name: Upload All Results
+        uses: actions/upload-artifact@v3
         with:
-          results_file: scorecard-results.json
-          publish_results: true
-          results_format: sarif
+          name: all-repos-scorecard
+          path: results/
