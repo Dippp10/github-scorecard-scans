@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>GitHub Repo Scorecard Markdown</title>
+</head>
+<body>
+<h2>Generate Markdown Table for GitHub Repos</h2>
+<input type="text" id="username" placeholder="Enter GitHub username" value="Dippp10">
+<button onclick="generateMarkdown()">Generate & Download</button>
+
+<script>
+async function generateMarkdown() {
+    const username = document.getElementById('username').value.trim();
+    if(!username) { alert('Enter username'); return; }
+
+    const reposRes = await fetch(`https://api.github.com/users/${username}/repos`);
+    const repos = await reposRes.json();
+
+    let markdown = "| Repository | Score |\n|------------|-------|\n";
+
+    for (const repo of repos) {
+        const repoName = repo.name;
+        try {
+            const scoreRes = await fetch(`https://api.securityscorecards.dev/projects/github.com/${username}/${repoName}/score`);
+            const scoreData = await scoreRes.json();
+            const score = scoreData.score ?? "N/A";
+            markdown += `| [${repoName}](https://github.com/${username}/${repoName}) | ${score} |\n`;
+        } catch(e) {
+            markdown += `| [${repoName}](https://github.com/${username}/${repoName}) | Error |\n`;
+        }
+    }
+
+    // Create download
+    const blob = new Blob([markdown], {type: "text/markdown"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${username}_repo_scores.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+    alert("Markdown file downloaded!");
+}
+</script>
+</body>
+</html>
