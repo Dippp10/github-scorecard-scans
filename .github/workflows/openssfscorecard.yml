@@ -30,5 +30,7 @@ jobs:
       - name: Run OpenSSF Scorecard
         uses: ossf/scorecard-action@v2.3.1
         with:
+          results_file: scorecard-results.sarif
           results_format: sarif
           publish_results: true
+          
