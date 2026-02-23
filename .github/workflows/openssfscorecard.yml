@@ -8,7 +8,7 @@ on:
   schedule:
     - cron: '0 2 * * 1'
 
-# ✅ Global permissions MUST be read-only
+# Global permissions MUST stay read-only
 permissions:
   contents: read
 
@@ -16,7 +16,6 @@ jobs:
   scorecard:
     runs-on: ubuntu-latest
 
-    # ✅ Write permissions only inside the job
     permissions:
       contents: read
       security-events: write
@@ -24,13 +23,12 @@ jobs:
       actions: read
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Run OpenSSF Scorecard
         uses: ossf/scorecard-action@v2.3.1
         with:
-          results_file: scorecard-results.sarif
-          results_format: sarif
+          results_file: scorecard-results.sarif   # ✅ REQUIRED
+          results_format: sarif                   # ✅ REQUIRED
           publish_results: true
-          
