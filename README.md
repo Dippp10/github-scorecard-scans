@@ -10,3 +10,5 @@ https://api.securityscorecards.dev/projects/github.com/Dippp10/github-scorecard-
 ![GitHub Scorecard](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Dippp10/github-scorecard-scans/main/scorecard.json)
 
 ![GitHub Scorecard](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/YOUR_USERNAME/github-scorecard-scans/main/scorecard.json)
+
+https://api.github.com/users/Dippp10/repos
